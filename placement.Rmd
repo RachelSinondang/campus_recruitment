@@ -1,0 +1,196 @@
+---
+title: "Untitled"
+author: "Rachel Sinondang"
+date: "4/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse) # untuk transformasi data
+library(plotly) # untuk membuat plot menjadi interaktif
+library(glue) # untuk custom informasi saat plot interaktif
+library(scales) # untuk custom keterangan axis atau lainnya
+library(ggpubr) # untuk export plot
+```
+
+```{r}
+placement <- read.csv("Placement_Data_Full_Class (1).csv")
+```
+
+ssc_p : Secondary Education percentage- 10th Grade  
+ssc_b : Board of Education- Central/ Others  
+hsc_p : Higher Secondary Education percentage- 12th Grade  
+hsc_b : Board of Education- Central/ Others  
+hsc_s : Specialization in Higher Secondary Education  
+degree_p : Degree Percentage  
+degree_t : Under Graduation(Degree type)- Field of degree education  
+workex : Work Experience  
+etest_p : Employability test percentage ( conducted by college)  
+specialisation : Post Graduation(MBA)- Specialization  
+mba_p : MBA percentage  
+
+```{r}
+p_status <- placement %>% select(-c(sl_no,salary)) %>%
+  mutate(gender = as.factor(gender),
+         ssc_b = as.factor(ssc_b),
+         hsc_b = as.factor(hsc_b),
+         hsc_s = as.factor(hsc_s),
+         degree_t = as.factor(degree_t),
+         workex = as.factor(workex),
+         specialisation = as.factor(specialisation),
+         status = as.factor(status)) %>%
+  drop_na()
+```
+
+```{r}
+RNGkind(sample.kind = "Rounding")
+set.seed(100)
+
+index <- sample(nrow(p_status), nrow(p_status) * 0.8)
+status_train <- p_status[index,]
+status_test <- p_status[-index,] 
+```
+
+```{r}
+prop.table(table(status_train$status))
+```
+
+
+```{r message=F, eval=F}
+library(randomForest)
+library(caret)
+RNGkind(sample.kind = "Rounding")
+set.seed(100)
+
+ctrl <- trainControl(method="repeatedcv", number = 7, repeats = 4)
+
+model_forest <- train(status ~ ., data = status_train, method = "rf", trControl = ctrl)
+
+saveRDS(model_forest, "model_forest.RDS") # simpan model
+```
+
+```{r}
+library(randomForest)
+model_forest$finalModel
+```
+
+```{r}
+forest_class <- predict(model_forest, status_test, type = "raw")
+head(forest_class)
+```
+
+```{r}
+confusionMatrix(data = forest_class, reference = as.factor(status_test$status),positive = "Placed")
+```
+```{r}
+p_status %>%
+  filter(status == "Placed") %>%
+  group_by(hsc_s) %>%
+    summarise(total = n())
+```
+
+```{r}
+p_status %>%
+  filter(status == "Placed") %>%
+  group_by(hsc_s) %>%
+  summarise(rerata = mean(ssc_p))
+```
+```{r}
+p_status %>%
+  filter(status == "Placed") %>%
+  group_by(hsc_s) %>%
+  summarise(rerata = mean(hsc_p))
+```
+```{r}
+p_status %>%
+  filter(status == "Placed") %>%
+  group_by(hsc_s) %>%
+  summarise(rerata = mean(degree_p))
+```
+```{r}
+p_status %>%
+  filter(status == "Placed") %>%
+  group_by(hsc_s) %>%
+  summarise(rerata = mean(etest_p))
+```
+
+```{r}
+p_status %>%
+  filter(status == "Placed",
+         specialisation == "Mkt&Fin") %>%
+  group_by(hsc_s) %>%
+  summarise(rerata = mean(mba_p))
+```
+
+```{r}
+by_gen <- p_status %>%
+  filter(status == "Placed", specialisation == "Mkt&Fin") %>%
+  group_by(gender, hsc_s) %>%
+  summarise(total = n())
+
+
+```
+
+
+```{r}
+per <- by_gen %>%
+  group_by(hsc_s) %>% 
+  mutate(proportion = round(total/sum(total),2)*100)
+```
+
+```{r}
+theme_algoritma <- theme(legend.key = element_rect(fill="black"),
+           legend.background = element_rect(color="white", fill="#263238"),
+           plot.subtitle = element_text(size=6, color="white"),
+           panel.background = element_rect(fill="#dddddd"),
+           panel.border = element_rect(fill=NA),
+           panel.grid.minor.x = element_blank(),
+           panel.grid.major.x = element_blank(),
+           panel.grid.major.y = element_line(color="darkgrey", linetype=2),
+           panel.grid.minor.y = element_blank(),
+           plot.background = element_rect(fill="#263238"),
+           text = element_text(color="white"),
+           axis.text = element_text(color="white")
+           
+           )
+```
+
+```{r}
+library(plotly)
+library(ggplot2)
+
+plot_composition <- per %>% 
+  ggplot(aes(x = total, 
+             y = hsc_s,
+             text = glue("Gender: {gender}
+                         Proportion: {proportion}%"))) +
+  geom_col(aes(fill = gender), position = "fill") +
+  geom_vline(xintercept = 0.5, col = "white", lty = 2, lwd = 1.5) + #membuat vertical line
+  labs(title = "Composition of Male and Female",
+       x = NULL,
+       y = NULL) +
+  scale_fill_manual(values = c("black", "firebrick")) +
+  scale_y_discrete(labels = wrap_format(30)) + # wrap tulisan agar tidak terlalu panjang
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  theme_algoritma + #harus dirun chunk atas untuk custom theme yg disediakan
+  theme(legend.position = "none") #untuk hapus legend
+```
+
+
+```{r}
+```
+
+
+```{r}
+ggplotly(plot_composition, tooltip = "text")
+```
+
+Which factor influenced a candidate in getting placed?
+Does percentage matters for one to get placed?
+Which degree specialization is much demanded by corporate?
+Play with the data conducting all statistical tests.
